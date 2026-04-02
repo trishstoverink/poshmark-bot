@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poshmark Bot</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Poshmark Bot</h1>
+            <div id="auth-status" class="status-badge offline">Not logged in</div>
+        </header>
+
+        <!-- Login Panel -->
+        <section id="login-panel" class="card">
+            <h2>Login to Poshmark</h2>
+            <form id="login-form">
+                <div class="form-row">
+                    <input type="text" id="username" placeholder="Username or Email" required>
+                    <input type="password" id="password" placeholder="Password" required>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </div>
+                <div id="login-error" class="error hidden"></div>
+            </form>
+        </section>
+
+        <!-- Main Controls (hidden until logged in) -->
+        <div id="main-controls" class="hidden">
+
+            <!-- Stats Bar -->
+            <section class="card stats-bar">
+                <div class="stat">
+                    <span class="stat-value" id="shares-today">0</span>
+                    <span class="stat-label">Shares Today</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="offers-today">0</span>
+                    <span class="stat-label">Offers Today</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="last-share">--</span>
+                    <span class="stat-label">Last Share</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="last-offer">--</span>
+                    <span class="stat-label">Last Offer</span>
+                </div>
+            </section>
+
+            <!-- Share Settings -->
+            <section class="card">
+                <div class="card-header">
+                    <h2>Auto-Share</h2>
+                    <button id="share-toggle" class="btn btn-success" onclick="toggleShare()">Start</button>
+                </div>
+                <div class="settings-grid">
+                    <div class="setting">
+                        <label>Min delay between shares (seconds)</label>
+                        <input type="range" id="share_delay_min" min="2" max="30" value="5"
+                               oninput="document.getElementById('share_delay_min_val').textContent=this.value">
+                        <span id="share_delay_min_val" class="range-val">5</span>s
+                    </div>
+                    <div class="setting">
+                        <label>Max delay between shares (seconds)</label>
+                        <input type="range" id="share_delay_max" min="3" max="60" value="10"
+                               oninput="document.getElementById('share_delay_max_val').textContent=this.value">
+                        <span id="share_delay_max_val" class="range-val">10</span>s
+                    </div>
+                    <div class="setting">
+                        <label>Share cycle interval (minutes)</label>
+                        <input type="number" id="share_interval_minutes" min="30" max="720" value="120" class="input-num">
+                    </div>
+                    <div class="setting">
+                        <label>Share order</label>
+                        <select id="share_order">
+                            <option value="random">Random</option>
+                            <option value="newest_first">Newest First</option>
+                            <option value="oldest_first">Oldest First</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" onclick="saveSettings()">Save Settings</button>
+            </section>
+
+            <!-- Offer Settings -->
+            <section class="card">
+                <div class="card-header">
+                    <h2>Auto-Offer</h2>
+                    <button id="offer-toggle" class="btn btn-success" onclick="toggleOffer()">Start</button>
+                </div>
+                <div class="settings-grid">
+                    <div class="setting">
+                        <label>Discount from listing price</label>
+                        <input type="range" id="offer_discount_percent" min="5" max="50" value="20"
+                               oninput="document.getElementById('offer_discount_val').textContent=this.value">
+                        <span id="offer_discount_val" class="range-val">20</span>%
+                    </div>
+                    <div class="setting">
+                        <label>Minimum offer price ($)</label>
+                        <input type="number" id="offer_min_price" min="3" max="500" value="5" step="1" class="input-num">
+                    </div>
+                    <div class="setting">
+                        <label>Check for likes every (minutes)</label>
+                        <input type="number" id="offer_check_interval_minutes" min="5" max="120" value="15" class="input-num">
+                    </div>
+                    <div class="setting">
+                        <label>
+                            <input type="checkbox" id="offer_shipping_discount" checked>
+                            Offer discounted shipping
+                        </label>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" onclick="saveSettings()">Save Settings</button>
+            </section>
+
+            <!-- Activity Log -->
+            <section class="card">
+                <h2>Activity Log</h2>
+                <div id="activity-log" class="log-container">
+                    <p class="log-empty">No activity yet</p>
+                </div>
+            </section>
+
+            <button class="btn btn-danger" onclick="doLogout()">Logout</button>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
