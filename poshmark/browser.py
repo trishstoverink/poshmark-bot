@@ -1,5 +1,4 @@
 import os
-import shutil
 import threading
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -8,9 +7,11 @@ from selenium.webdriver.chrome.options import Options
 _browser = None
 _lock = threading.Lock()
 
+CHROME_BIN = os.environ.get("CHROME_BIN", "/opt/chrome-linux64/chrome")
+CHROMEDRIVER = os.environ.get("CHROMEDRIVER_PATH", "/opt/chromedriver-linux64/chromedriver")
+
 
 def get_browser():
-    """Get or create the shared headless Chrome browser instance."""
     global _browser
     with _lock:
         if _browser is None or _is_dead(_browser):
@@ -41,14 +42,17 @@ def _create_browser():
         "Chrome/124.0.0.0 Safari/537.36"
     )
 
-    # Use system-installed Chrome + ChromeDriver (from Dockerfile)
-    chrome_path = shutil.which("google-chrome") or "/usr/bin/google-chrome"
-    chromedriver_path = shutil.which("chromedriver") or "/usr/bin/chromedriver"
+    # Set Chrome binary location
+    if os.path.exists(CHROME_BIN):
+        opts.binary_location = CHROME_BIN
 
-    if os.path.exists(chrome_path):
-        opts.binary_location = chrome_path
+    # Set ChromeDriver path
+    if os.path.exists(CHROMEDRIVER):
+        service = Service(executable_path=CHROMEDRIVER)
+    else:
+        # Fallback: let Selenium try to find it on PATH
+        service = Service()
 
-    service = Service(executable_path=chromedriver_path)
     driver = webdriver.Chrome(service=service, options=opts)
     driver.implicitly_wait(10)
     return driver
