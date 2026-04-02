@@ -151,6 +151,17 @@ def posh_login():
     return jsonify(result)
 
 
+@app.route("/api/posh/verify", methods=["POST"])
+@login_required
+def posh_verify():
+    data = request.get_json()
+    code = data.get("code", "").strip()
+    if not code:
+        return jsonify({"success": False, "error": "Verification code required"}), 400
+    result = posh_auth.submit_verification_code(code)
+    return jsonify(result)
+
+
 @app.route("/api/posh/logout", methods=["POST"])
 @login_required
 def posh_logout():

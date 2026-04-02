@@ -27,19 +27,52 @@ document.getElementById("posh-login-form").addEventListener("submit", async (e) 
     const username = document.getElementById("posh-username").value;
     const password = document.getElementById("posh-password").value;
     const errEl = document.getElementById("posh-login-error");
+    const btn = document.getElementById("posh-connect-btn");
     errEl.classList.add("hidden");
+    btn.textContent = "Connecting...";
+    btn.disabled = true;
 
     const result = await api("/api/posh/login", "POST", { username, password });
+    btn.textContent = "Connect";
+    btn.disabled = false;
+
     if (result.success) {
         showPoshConnected(result.username);
+    } else if (result.needs_code) {
+        // Show verification code panel
+        document.getElementById("posh-login-form").classList.add("hidden");
+        document.getElementById("posh-verify-panel").classList.remove("hidden");
     } else {
         errEl.textContent = result.error || "Connection failed";
         errEl.classList.remove("hidden");
     }
 });
 
+// Verification code submission
+document.getElementById("posh-verify-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const code = document.getElementById("posh-code").value;
+    const errEl = document.getElementById("posh-verify-error");
+    const btn = document.getElementById("posh-verify-btn");
+    errEl.classList.add("hidden");
+    btn.textContent = "Verifying...";
+    btn.disabled = true;
+
+    const result = await api("/api/posh/verify", "POST", { code });
+    btn.textContent = "Verify";
+    btn.disabled = false;
+
+    if (result.success) {
+        showPoshConnected(result.username);
+    } else {
+        errEl.textContent = result.error || "Verification failed";
+        errEl.classList.remove("hidden");
+    }
+});
+
 function showPoshConnected(username) {
     document.getElementById("posh-login-panel").classList.add("hidden");
+    document.getElementById("posh-verify-panel").classList.add("hidden");
     document.getElementById("main-controls").classList.remove("hidden");
     const badge = document.getElementById("posh-status");
     badge.textContent = "Poshmark: " + username;
@@ -48,6 +81,8 @@ function showPoshConnected(username) {
 
 function showPoshDisconnected() {
     document.getElementById("posh-login-panel").classList.remove("hidden");
+    document.getElementById("posh-login-form").classList.remove("hidden");
+    document.getElementById("posh-verify-panel").classList.add("hidden");
     document.getElementById("main-controls").classList.add("hidden");
     const badge = document.getElementById("posh-status");
     badge.textContent = "Poshmark: Not connected";

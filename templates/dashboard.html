@@ -20,14 +20,27 @@
         <!-- Poshmark Login Panel -->
         <section id="posh-login-panel" class="card">
             <h2>Connect Poshmark Account</h2>
+            <!-- Step 1: Credentials -->
             <form id="posh-login-form">
                 <div class="form-row">
                     <input type="text" id="posh-username" placeholder="Poshmark Username or Email" required>
                     <input type="password" id="posh-password" placeholder="Poshmark Password" required>
-                    <button type="submit" class="btn btn-primary">Connect</button>
+                    <button type="submit" class="btn btn-primary" id="posh-connect-btn">Connect</button>
                 </div>
                 <div id="posh-login-error" class="error hidden"></div>
             </form>
+            <!-- Step 2: Verification Code -->
+            <div id="posh-verify-panel" class="hidden" style="margin-top:16px;">
+                <p style="color:#4ade80; margin-bottom:10px;">Verification code sent to your email. Enter it below:</p>
+                <form id="posh-verify-form">
+                    <div class="form-row">
+                        <input type="text" id="posh-code" placeholder="Enter verification code" required
+                               style="letter-spacing:4px; font-size:18px; text-align:center; max-width:250px;">
+                        <button type="submit" class="btn btn-primary" id="posh-verify-btn">Verify</button>
+                    </div>
+                    <div id="posh-verify-error" class="error hidden"></div>
+                </form>
+            </div>
         </section>
 
         <!-- Main Controls (hidden until Poshmark connected) -->
