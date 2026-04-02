@@ -4,15 +4,26 @@ let offerRunning = false;
 let isAdmin = false;
 
 // ── API helpers ─────────────────────────────────────────────
-async function api(path, method = "GET", body = null) {
-    const opts = { method, headers: { "Content-Type": "application/json" } };
+async function api(path, method = "GET", body = null, timeoutMs = 30000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const opts = { method, headers: { "Content-Type": "application/json" }, signal: controller.signal };
     if (body) opts.body = JSON.stringify(body);
-    const resp = await fetch(path, opts);
-    if (resp.status === 401) {
-        window.location.href = "/auth";
-        return {};
+    try {
+        const resp = await fetch(path, opts);
+        clearTimeout(timer);
+        if (resp.status === 401) {
+            window.location.href = "/auth";
+            return {};
+        }
+        return resp.json();
+    } catch (e) {
+        clearTimeout(timer);
+        if (e.name === "AbortError") {
+            return { success: false, error: "Request timed out. Check the activity log for details." };
+        }
+        return { success: false, error: e.message };
     }
-    return resp.json();
 }
 
 // ── Account Auth ────────────────────────────────────────────
@@ -32,7 +43,7 @@ document.getElementById("posh-login-form").addEventListener("submit", async (e) 
     btn.textContent = "Connecting...";
     btn.disabled = true;
 
-    const result = await api("/api/posh/login", "POST", { username, password });
+    const result = await api("/api/posh/login", "POST", { username, password }, 90000);
     btn.textContent = "Connect";
     btn.disabled = false;
 
