@@ -1,122 +1,103 @@
-import requests
-import uuid
+import time
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from database import save_session, load_session, clear_session, log_activity
+from poshmark.browser import get_browser, close_browser
 
-API_BASE = "https://api.poshmark.com/api"
-WEB_BASE = "https://poshmark.com"
-
-DEFAULT_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Mobile Safari/537.36"
-    ),
-    "Accept": "application/json",
-}
+POSH_URL = "https://poshmark.com"
 
 
 class PoshmarkAuth:
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update(DEFAULT_HEADERS)
         self.username = None
-        self.access_token = None
+        self.logged_in = False
         self._restore_session()
 
     def _restore_session(self):
-        cookies = load_session("cookies")
         username = load_session("username")
-        token = load_session("access_token")
-        if username:
+        was_logged_in = load_session("logged_in")
+        if username and was_logged_in:
             self.username = username
-        if cookies:
-            for name, value in cookies.items():
-                self.session.cookies.set(name, value)
-        if token:
-            self.access_token = token
-            self.session.headers["Authorization"] = f"Bearer {token}"
+            # We'll re-verify on first API call
 
-    def _save_auth(self):
-        cookies = {name: value for name, value in self.session.cookies.items()}
-        save_session("cookies", cookies)
+    def _save_state(self):
         if self.username:
             save_session("username", self.username)
-        if self.access_token:
-            save_session("access_token", self.access_token)
+        save_session("logged_in", self.logged_in)
 
     def login(self, username, password):
-        self.username = username
-
-        # Method 1: Token-based API login
         try:
-            resp = self.session.post(
-                f"{API_BASE}/auth/users/access_token",
-                data={"user_handle": username, "password": password},
-                timeout=30,
+            driver = get_browser()
+            driver.get(f"{POSH_URL}/login")
+            time.sleep(2)
+
+            wait = WebDriverWait(driver, 15)
+
+            # Find and fill username field
+            user_field = wait.until(
+                EC.presence_of_element_located((By.NAME, "login_form[username_email]"))
             )
-            if resp.status_code == 200:
-                data = resp.json()
-                token = data.get("access_token")
-                if token:
-                    self.access_token = token
-                    self.session.headers["Authorization"] = f"Bearer {token}"
-                    self._save_auth()
-                    log_activity("posh_login", f"Connected as {username} (token)")
-                    return {"success": True, "username": username}
-        except Exception:
-            pass
+            user_field.clear()
+            user_field.send_keys(username)
 
-        # Method 2: Web cookie-based login
-        try:
-            device_uuid = str(uuid.uuid4())
-            resp = self.session.post(
-                f"{WEB_BASE}/api/v1/login",
-                json={
-                    "login_form": {
-                        "username_email": username,
-                        "password": password,
-                        "remember_me": True,
-                    },
-                    "device_uuid": device_uuid,
-                },
-                headers={**DEFAULT_HEADERS, "Content-Type": "application/json"},
-                timeout=30,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                if "error" not in data:
-                    self._save_auth()
-                    log_activity("posh_login", f"Connected as {username} (cookie)")
-                    return {"success": True, "username": username}
-                return {"success": False, "error": data.get("error", {}).get("message", "Login failed")}
+            # Find and fill password field
+            pw_field = driver.find_element(By.NAME, "login_form[password]")
+            pw_field.clear()
+            pw_field.send_keys(password)
 
-            return {"success": False, "error": f"HTTP {resp.status_code} - Poshmark may be blocking automated login. Try again later."}
+            # Click login button
+            login_btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            login_btn.click()
 
-        except requests.RequestException as e:
-            return {"success": False, "error": str(e)}
+            # Wait for navigation away from login page
+            time.sleep(3)
+
+            # Check if login succeeded by looking at current URL or page content
+            if "/login" not in driver.current_url:
+                self.username = username
+                self.logged_in = True
+                self._save_state()
+                log_activity("posh_login", f"Connected as {username}")
+                return {"success": True, "username": username}
+
+            # Check for error messages on page
+            try:
+                error_el = driver.find_element(By.CSS_SELECTOR, ".form__error-message, .error-message, [class*='error']")
+                error_text = error_el.text.strip()
+                if error_text:
+                    return {"success": False, "error": error_text}
+            except Exception:
+                pass
+
+            return {"success": False, "error": "Login failed. Check your credentials."}
+
+        except Exception as e:
+            return {"success": False, "error": f"Browser error: {str(e)}"}
 
     def logout(self):
         clear_session()
-        self.session.cookies.clear()
-        self.session.headers.pop("Authorization", None)
         self.username = None
-        self.access_token = None
+        self.logged_in = False
+        try:
+            driver = get_browser()
+            driver.delete_all_cookies()
+            driver.get(f"{POSH_URL}/logout")
+        except Exception:
+            pass
         log_activity("posh_logout", "Disconnected from Poshmark")
 
     def is_logged_in(self):
         if not self.username:
             return False
-        if self.access_token:
-            return True
-        # Check if cookies are still valid
-        try:
-            resp = self.session.get(f"{WEB_BASE}/api/v1/users/me", timeout=10)
-            return resp.status_code == 200
-        except requests.RequestException:
-            return False
+        return self.logged_in
 
-    def get_session(self):
-        return self.session
+    def ensure_logged_in(self):
+        """Verify we're still logged in, return the browser driver."""
+        driver = get_browser()
+        if not self.logged_in:
+            return None
+        return driver
 
     def get_username(self):
         return self.username
