@@ -141,57 +141,104 @@ class PoshmarkAuth:
     def submit_verification_code(self, code):
         try:
             driver = get_browser()
+            code = code.strip().replace(" ", "")
+            log_activity("posh_verify", f"Submitting code ({len(code)} digits)...", "info")
 
-            # Find the code input
-            code_input = None
-            for selector in [
-                "input[name*='code']",
-                "input[name*='verify']",
-                "input[type='tel']",
-                "input[type='number']",
-                "input[placeholder*='code']",
-                "input[placeholder*='Code']",
-                "#verification_code",
-            ]:
-                try:
-                    code_input = WebDriverWait(driver, 3).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                    )
-                    if code_input:
-                        break
-                except Exception:
-                    continue
+            # Strategy 1: Individual digit input boxes (one per digit)
+            digit_inputs = driver.find_elements(By.CSS_SELECTOR,
+                "input[maxlength='1'], input[data-index], input[aria-label*='digit']"
+            )
+            # Filter to visible ones
+            digit_inputs = [i for i in digit_inputs if i.is_displayed()]
 
-            if not code_input:
-                inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='text'], input[type='tel'], input[type='number'], input:not([type])")
-                for inp in inputs:
-                    if inp.is_displayed():
-                        code_input = inp
-                        break
+            if len(digit_inputs) >= len(code):
+                log_activity("posh_verify", f"Found {len(digit_inputs)} digit boxes", "info")
+                for i, digit in enumerate(code):
+                    try:
+                        digit_inputs[i].click()
+                        time.sleep(0.1)
+                        digit_inputs[i].send_keys(digit)
+                    except Exception:
+                        # Use JS as fallback
+                        driver.execute_script(
+                            "arguments[0].value = arguments[1]; "
+                            "arguments[0].dispatchEvent(new Event('input', {bubbles: true}));",
+                            digit_inputs[i], digit
+                        )
+                time.sleep(1)
+            else:
+                # Strategy 2: Single input field - use JS to set value
+                code_input = None
+                for selector in [
+                    "input[name*='code']", "input[name*='verify']",
+                    "input[type='tel']", "input[type='number']",
+                    "input[placeholder*='code']", "input[placeholder*='Code']",
+                    "input[autocomplete='one-time-code']",
+                ]:
+                    try:
+                        el = driver.find_element(By.CSS_SELECTOR, selector)
+                        if el.is_displayed():
+                            code_input = el
+                            log_activity("posh_verify", f"Found code input: {selector}", "info")
+                            break
+                    except Exception:
+                        continue
 
-            if not code_input:
-                return {"success": False, "error": "Could not find code input on page."}
+                if not code_input:
+                    # Fallback: any visible input
+                    all_inputs = driver.find_elements(By.TAG_NAME, "input")
+                    for inp in all_inputs:
+                        if inp.is_displayed() and inp.get_attribute("type") in ("text", "tel", "number", ""):
+                            code_input = inp
+                            break
 
-            code_input.clear()
-            code_input.send_keys(code)
-            time.sleep(0.5)
+                if not code_input:
+                    inputs_info = [(i.get_attribute("type"), i.get_attribute("name"), i.get_attribute("maxlength"))
+                                   for i in driver.find_elements(By.TAG_NAME, "input") if i.is_displayed()]
+                    log_activity("posh_verify", f"No code input. Visible inputs: {inputs_info}", "error")
+                    return {"success": False, "error": "Could not find code input on page."}
 
-            # Submit
+                # Use JS to set value (avoids "invalid element state")
+                driver.execute_script(
+                    "arguments[0].focus(); arguments[0].value = ''; arguments[0].value = arguments[1]; "
+                    "arguments[0].dispatchEvent(new Event('input', {bubbles: true})); "
+                    "arguments[0].dispatchEvent(new Event('change', {bubbles: true}));",
+                    code_input, code
+                )
+                time.sleep(0.5)
+
+            # Click submit button
             submitted = False
-            for btn_text in ["Verify", "Submit", "Confirm", "Continue"]:
+            for btn_text in ["Verify", "Submit", "Confirm", "Continue", "Done"]:
                 try:
                     btn = driver.find_element(By.XPATH, f"//button[contains(text(), '{btn_text}')]")
-                    if btn.is_displayed():
+                    if btn.is_displayed() and btn.is_enabled():
                         btn.click()
                         submitted = True
+                        log_activity("posh_verify", f"Clicked '{btn_text}' button", "info")
                         break
                 except Exception:
                     continue
 
             if not submitted:
-                code_input.send_keys(Keys.RETURN)
+                # Try any submit button
+                try:
+                    btn = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+                    btn.click()
+                    submitted = True
+                except Exception:
+                    pass
 
+            if not submitted:
+                # Last resort: press Enter on the last input
+                last_input = digit_inputs[-1] if digit_inputs else code_input
+                if last_input:
+                    last_input.send_keys(Keys.RETURN)
+
+            log_activity("posh_verify", "Waiting for verification result...", "info")
             time.sleep(5)
+
+            log_activity("posh_verify", f"Current URL: {driver.current_url}", "info")
 
             if "/login" not in driver.current_url.lower() and "verify" not in driver.current_url.lower():
                 self.logged_in = True
