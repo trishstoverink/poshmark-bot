@@ -3,10 +3,7 @@ import json
 import os
 from config import DEFAULTS
 
-DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "poshmark_bot.db"))
-
-# Ensure the directory exists (needed for Render's /data disk)
-os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "poshmark_bot.db")
 
 
 def get_db():
