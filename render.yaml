@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: poshmark-bot
-    runtime: docker
-    plan: starter
-    envVars:
-      - key: SECRET_KEY
-        generateValue: true
