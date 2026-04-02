@@ -10,23 +10,27 @@
     <div class="container">
         <header>
             <h1>Poshmark Bot</h1>
-            <div id="auth-status" class="status-badge offline">Not logged in</div>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div id="posh-status" class="status-badge offline">Poshmark: Not connected</div>
+                <span style="color:#8b949e; font-size:13px;" id="user-badge">{{ user }}</span>
+                <button class="btn btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="accountLogout()">Sign Out</button>
+            </div>
         </header>
 
-        <!-- Login Panel -->
-        <section id="login-panel" class="card">
-            <h2>Login to Poshmark</h2>
-            <form id="login-form">
+        <!-- Poshmark Login Panel -->
+        <section id="posh-login-panel" class="card">
+            <h2>Connect Poshmark Account</h2>
+            <form id="posh-login-form">
                 <div class="form-row">
-                    <input type="text" id="username" placeholder="Username or Email" required>
-                    <input type="password" id="password" placeholder="Password" required>
-                    <button type="submit" class="btn btn-primary">Login</button>
+                    <input type="text" id="posh-username" placeholder="Poshmark Username or Email" required>
+                    <input type="password" id="posh-password" placeholder="Poshmark Password" required>
+                    <button type="submit" class="btn btn-primary">Connect</button>
                 </div>
-                <div id="login-error" class="error hidden"></div>
+                <div id="posh-login-error" class="error hidden"></div>
             </form>
         </section>
 
-        <!-- Main Controls (hidden until logged in) -->
+        <!-- Main Controls (hidden until Poshmark connected) -->
         <div id="main-controls" class="hidden">
 
             <!-- Stats Bar -->
@@ -123,8 +127,23 @@
                 </div>
             </section>
 
-            <button class="btn btn-danger" onclick="doLogout()">Logout</button>
+            <button class="btn btn-danger" onclick="doPoshLogout()" style="margin-bottom:16px;">Disconnect Poshmark</button>
         </div>
+
+        <!-- Admin: User Management (hidden for non-admins) -->
+        <section id="admin-panel" class="card hidden">
+            <h2>Manage Users</h2>
+            <div id="user-list" style="margin-bottom:16px;"></div>
+            <h3 style="font-size:14px; color:#8b949e; margin-bottom:8px;">Add New User</h3>
+            <form id="add-user-form">
+                <div class="form-row">
+                    <input type="text" id="new-username" placeholder="Username" required>
+                    <input type="password" id="new-password" placeholder="Password (6+)" required minlength="6">
+                    <button type="submit" class="btn btn-primary">Add User</button>
+                </div>
+                <div id="add-user-error" class="error hidden"></div>
+            </form>
+        </section>
     </div>
 
     <script src="/static/app.js"></script>

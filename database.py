@@ -1,6 +1,8 @@
 import sqlite3
 import json
 import os
+import hashlib
+import secrets
 from config import DEFAULTS
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "poshmark_bot.db")
@@ -46,6 +48,17 @@ def init_db():
         CREATE TABLE IF NOT EXISTS session_data (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        )
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            is_admin INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
@@ -149,3 +162,76 @@ def clear_session():
     conn.execute("DELETE FROM session_data")
     conn.commit()
     conn.close()
+
+
+# ── User auth ────────────────────────────────────────────────
+
+def _hash_password(password, salt):
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000).hex()
+
+
+def create_user(username, password):
+    salt = secrets.token_hex(16)
+    pw_hash = _hash_password(password, salt)
+    # First user is automatically admin
+    is_admin = 1 if user_count() == 0 else 0
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, salt, is_admin) VALUES (?, ?, ?, ?)",
+            (username, pw_hash, salt, is_admin),
+        )
+        conn.commit()
+        return {"success": True}
+    except sqlite3.IntegrityError:
+        return {"success": False, "error": "Username already taken"}
+    finally:
+        conn.close()
+
+
+def verify_user(username, password):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT password_hash, salt FROM users WHERE username = ?", (username,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return False
+    return _hash_password(password, row["salt"]) == row["password_hash"]
+
+
+def user_exists(username):
+    conn = get_db()
+    row = conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    return row is not None
+
+
+def user_count():
+    conn = get_db()
+    row = conn.execute("SELECT COUNT(*) as cnt FROM users").fetchone()
+    conn.close()
+    return row["cnt"]
+
+
+def is_admin(username):
+    conn = get_db()
+    row = conn.execute("SELECT is_admin FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    return row is not None and row["is_admin"] == 1
+
+
+def list_users():
+    conn = get_db()
+    rows = conn.execute("SELECT id, username, is_admin, created_at FROM users ORDER BY id").fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def delete_user(username):
+    conn = get_db()
+    conn.execute("DELETE FROM users WHERE username = ? AND is_admin = 0", (username,))
+    conn.commit()
+    affected = conn.total_changes
+    conn.close()
+    return affected > 0

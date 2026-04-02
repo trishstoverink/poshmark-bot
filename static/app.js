@@ -1,54 +1,65 @@
 // ── State ────────────────────────────────────────────────────
 let shareRunning = false;
 let offerRunning = false;
+let isAdmin = false;
 
 // ── API helpers ─────────────────────────────────────────────
 async function api(path, method = "GET", body = null) {
     const opts = { method, headers: { "Content-Type": "application/json" } };
     if (body) opts.body = JSON.stringify(body);
     const resp = await fetch(path, opts);
+    if (resp.status === 401) {
+        window.location.href = "/auth";
+        return {};
+    }
     return resp.json();
 }
 
-// ── Auth ────────────────────────────────────────────────────
-document.getElementById("login-form").addEventListener("submit", async (e) => {
+// ── Account Auth ────────────────────────────────────────────
+async function accountLogout() {
+    await api("/api/user/logout", "POST");
+    window.location.href = "/auth";
+}
+
+// ── Poshmark Auth ───────────────────────────────────────────
+document.getElementById("posh-login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const username = document.getElementById("username").value;
-    const password = document.getElementById("password").value;
-    const errEl = document.getElementById("login-error");
+    const username = document.getElementById("posh-username").value;
+    const password = document.getElementById("posh-password").value;
+    const errEl = document.getElementById("posh-login-error");
     errEl.classList.add("hidden");
 
-    const result = await api("/api/login", "POST", { username, password });
+    const result = await api("/api/posh/login", "POST", { username, password });
     if (result.success) {
-        showLoggedIn(result.username);
+        showPoshConnected(result.username);
     } else {
-        errEl.textContent = result.error || "Login failed";
+        errEl.textContent = result.error || "Connection failed";
         errEl.classList.remove("hidden");
     }
 });
 
-function showLoggedIn(username) {
-    document.getElementById("login-panel").classList.add("hidden");
+function showPoshConnected(username) {
+    document.getElementById("posh-login-panel").classList.add("hidden");
     document.getElementById("main-controls").classList.remove("hidden");
-    const badge = document.getElementById("auth-status");
-    badge.textContent = username;
+    const badge = document.getElementById("posh-status");
+    badge.textContent = "Poshmark: " + username;
     badge.className = "status-badge online";
 }
 
-function showLoggedOut() {
-    document.getElementById("login-panel").classList.remove("hidden");
+function showPoshDisconnected() {
+    document.getElementById("posh-login-panel").classList.remove("hidden");
     document.getElementById("main-controls").classList.add("hidden");
-    const badge = document.getElementById("auth-status");
-    badge.textContent = "Not logged in";
+    const badge = document.getElementById("posh-status");
+    badge.textContent = "Poshmark: Not connected";
     badge.className = "status-badge offline";
 }
 
-async function doLogout() {
-    await api("/api/logout", "POST");
+async function doPoshLogout() {
+    await api("/api/posh/logout", "POST");
     shareRunning = false;
     offerRunning = false;
     updateToggleButtons();
-    showLoggedOut();
+    showPoshDisconnected();
 }
 
 // ── Settings ────────────────────────────────────────────────
@@ -69,7 +80,6 @@ async function loadSettings() {
             el.value = settings[key];
         }
     }
-    // Update displayed range values
     const minVal = document.getElementById("share_delay_min_val");
     const maxVal = document.getElementById("share_delay_max_val");
     const discVal = document.getElementById("offer_discount_val");
@@ -152,9 +162,7 @@ async function pollStatus() {
         document.getElementById("offers-today").textContent = status.offers_today;
         document.getElementById("last-share").textContent = status.last_share_time || "--";
         document.getElementById("last-offer").textContent = status.last_offer_time || "--";
-    } catch (e) {
-        // server unreachable, ignore
-    }
+    } catch (e) {}
 }
 
 // ── Activity Log ────────────────────────────────────────────
@@ -186,22 +194,80 @@ async function pollActivity() {
                 <span class="log-detail">${detail}</span>
             </div>`;
         }).join("");
-    } catch (e) {
-        // ignore
+    } catch (e) {}
+}
+
+// ── Admin: User Management ──────────────────────────────────
+async function loadUsers() {
+    if (!isAdmin) return;
+    const users = await api("/api/admin/users");
+    const container = document.getElementById("user-list");
+    if (!Array.isArray(users)) return;
+
+    container.innerHTML = users.map(u => {
+        const badge = u.is_admin ? '<span style="color:#fbbf24; font-size:11px; margin-left:6px;">ADMIN</span>' : '';
+        const deleteBtn = u.is_admin ? '' :
+            `<button class="btn btn-danger" style="padding:4px 10px; font-size:11px;" onclick="deleteUser('${u.username}')">Remove</button>`;
+        return `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #2d3148;">
+            <span>${u.username}${badge} <span style="color:#6b7280; font-size:11px;">joined ${u.created_at || ''}</span></span>
+            ${deleteBtn}
+        </div>`;
+    }).join("");
+}
+
+async function deleteUser(username) {
+    if (!confirm("Remove user '" + username + "'? They will no longer be able to sign in.")) return;
+    const result = await api("/api/admin/users/" + encodeURIComponent(username), "DELETE");
+    if (result.success) {
+        loadUsers();
+    } else {
+        alert(result.error || "Failed to remove user");
     }
 }
 
+document.getElementById("add-user-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById("add-user-error");
+    errEl.classList.add("hidden");
+    const username = document.getElementById("new-username").value;
+    const password = document.getElementById("new-password").value;
+    const result = await api("/api/admin/users", "POST", { username, password });
+    if (result.success) {
+        document.getElementById("new-username").value = "";
+        document.getElementById("new-password").value = "";
+        loadUsers();
+    } else {
+        errEl.textContent = result.error;
+        errEl.classList.remove("hidden");
+    }
+});
+
 // ── Init ────────────────────────────────────────────────────
 async function init() {
-    const authResult = await api("/api/auth/status");
-    if (authResult.logged_in) {
-        showLoggedIn(authResult.username);
+    // Check account status
+    const userStatus = await api("/api/user/status");
+    if (!userStatus.logged_in) {
+        window.location.href = "/auth";
+        return;
     }
+    isAdmin = userStatus.is_admin;
+
+    // Show admin panel if admin
+    if (isAdmin) {
+        document.getElementById("admin-panel").classList.remove("hidden");
+        loadUsers();
+    }
+
+    // Check Poshmark connection
+    const poshStatus = await api("/api/posh/status");
+    if (poshStatus.logged_in) {
+        showPoshConnected(poshStatus.username);
+    }
+
     await loadSettings();
     await pollStatus();
     await pollActivity();
 
-    // Poll every 5 seconds
     setInterval(pollStatus, 5000);
     setInterval(pollActivity, 5000);
 }

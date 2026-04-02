@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poshmark Bot - Login</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .auth-container {
+            max-width: 400px;
+            margin: 80px auto;
+            padding: 0 16px;
+        }
+        .auth-container h1 { text-align: center; margin-bottom: 8px; }
+        .auth-subtitle { text-align: center; color: #8b949e; margin-bottom: 32px; font-size: 14px; }
+        .auth-form input { width: 100%; margin-bottom: 12px; }
+        .auth-form button { width: 100%; margin-top: 4px; }
+        .auth-toggle { text-align: center; margin-top: 16px; font-size: 13px; color: #8b949e; }
+        .auth-toggle a { color: #6366f1; cursor: pointer; text-decoration: none; }
+        .auth-toggle a:hover { text-decoration: underline; }
+        .first-user-note { background: #1a2a3a; border: 1px solid #2d4a6a; border-radius: 8px;
+            padding: 12px; margin-bottom: 16px; font-size: 13px; color: #60a5fa; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <h1>Poshmark Bot</h1>
+
+        {% if show_register %}
+        <p class="first-user-note">No accounts yet. Create the first account to get started (this will be the admin).</p>
+        {% endif %}
+
+        <!-- Login Form -->
+        <div id="login-view" {% if show_register %}class="hidden"{% endif %}>
+            <p class="auth-subtitle">Sign in to your account</p>
+            <form class="auth-form" id="login-form">
+                <div class="card">
+                    <input type="text" id="login-username" placeholder="Username" required>
+                    <input type="password" id="login-password" placeholder="Password" required>
+                    <div id="login-error" class="error hidden"></div>
+                    <button type="submit" class="btn btn-primary">Sign In</button>
+                </div>
+            </form>
+            <p class="auth-toggle">Don't have an account? <a onclick="showRegister()">Register</a></p>
+        </div>
+
+        <!-- Register Form -->
+        <div id="register-view" {% if not show_register %}class="hidden"{% endif %}>
+            <p class="auth-subtitle">Create a new account</p>
+            <form class="auth-form" id="register-form">
+                <div class="card">
+                    <input type="text" id="reg-username" placeholder="Username" required>
+                    <input type="password" id="reg-password" placeholder="Password (6+ characters)" required minlength="6">
+                    <input type="password" id="reg-confirm" placeholder="Confirm Password" required minlength="6">
+                    <div id="register-error" class="error hidden"></div>
+                    <button type="submit" class="btn btn-primary">Create Account</button>
+                </div>
+            </form>
+            <p class="auth-toggle">Already have an account? <a onclick="showLogin()">Sign In</a></p>
+        </div>
+    </div>
+
+    <script>
+        function showRegister() {
+            document.getElementById("login-view").classList.add("hidden");
+            document.getElementById("register-view").classList.remove("hidden");
+        }
+        function showLogin() {
+            document.getElementById("register-view").classList.add("hidden");
+            document.getElementById("login-view").classList.remove("hidden");
+        }
+
+        document.getElementById("login-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const errEl = document.getElementById("login-error");
+            errEl.classList.add("hidden");
+            const resp = await fetch("/api/user/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    username: document.getElementById("login-username").value,
+                    password: document.getElementById("login-password").value,
+                }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+                window.location.href = "/";
+            } else {
+                errEl.textContent = data.error;
+                errEl.classList.remove("hidden");
+            }
+        });
+
+        document.getElementById("register-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const errEl = document.getElementById("register-error");
+            errEl.classList.add("hidden");
+            const pw = document.getElementById("reg-password").value;
+            const confirm = document.getElementById("reg-confirm").value;
+            if (pw !== confirm) {
+                errEl.textContent = "Passwords don't match";
+                errEl.classList.remove("hidden");
+                return;
+            }
+            const resp = await fetch("/api/user/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    username: document.getElementById("reg-username").value,
+                    password: pw,
+                }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+                window.location.href = "/";
+            } else {
+                errEl.textContent = data.error;
+                errEl.classList.remove("hidden");
+            }
+        });
+    </script>
+</body>
+</html>
