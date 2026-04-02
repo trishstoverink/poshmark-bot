@@ -1,9 +1,9 @@
 import os
+import shutil
 import threading
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 
 _browser = None
 _lock = threading.Lock()
@@ -41,14 +41,14 @@ def _create_browser():
         "Chrome/124.0.0.0 Safari/537.36"
     )
 
-    # Use system Chrome if available (Docker), otherwise auto-download
-    chrome_path = "/usr/bin/google-chrome"
+    # Use system-installed Chrome + ChromeDriver (from Dockerfile)
+    chrome_path = shutil.which("google-chrome") or "/usr/bin/google-chrome"
+    chromedriver_path = shutil.which("chromedriver") or "/usr/bin/chromedriver"
+
     if os.path.exists(chrome_path):
         opts.binary_location = chrome_path
-        service = Service()
-    else:
-        service = Service(ChromeDriverManager().install())
 
+    service = Service(executable_path=chromedriver_path)
     driver = webdriver.Chrome(service=service, options=opts)
     driver.implicitly_wait(10)
     return driver
