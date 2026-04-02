@@ -181,6 +181,23 @@ def posh_status():
     })
 
 
+# ── Debug API ────────────────────────────────────────────────
+
+@app.route("/api/debug/screenshot")
+@admin_required
+def debug_screenshot():
+    """Capture what Chrome is currently showing."""
+    try:
+        from poshmark.browser import get_browser
+        driver = get_browser()
+        screenshot_b64 = driver.get_screenshot_as_base64()
+        url = driver.current_url
+        title = driver.title
+        return jsonify({"image": screenshot_b64, "url": url, "title": title})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
 # ── Settings API ─────────────────────────────────────────────
 
 @app.route("/api/settings")

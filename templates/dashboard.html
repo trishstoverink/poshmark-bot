@@ -157,6 +157,15 @@
                 <div id="add-user-error" class="error hidden"></div>
             </form>
         </section>
+        <!-- Debug: Browser Screenshot -->
+        <section id="debug-panel" class="card hidden">
+            <div class="card-header">
+                <h2>Debug: Browser View</h2>
+                <button class="btn btn-secondary" onclick="captureScreenshot()">Capture Screenshot</button>
+            </div>
+            <p id="debug-url" style="font-size:12px; color:#6b7280; margin-bottom:8px;"></p>
+            <img id="debug-img" style="width:100%; border-radius:8px; display:none;">
+        </section>
     </div>
 
     <script src="/static/app.js"></script>

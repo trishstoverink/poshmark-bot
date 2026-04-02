@@ -69,7 +69,7 @@ document.getElementById("posh-verify-form").addEventListener("submit", async (e)
     btn.textContent = "Verifying...";
     btn.disabled = true;
 
-    const result = await api("/api/posh/verify", "POST", { code });
+    const result = await api("/api/posh/verify", "POST", { code }, 90000);
     btn.textContent = "Verify";
     btn.disabled = false;
 
@@ -288,6 +288,19 @@ document.getElementById("add-user-form").addEventListener("submit", async (e) =>
     }
 });
 
+// ── Debug: Screenshot ───────────────────────────────────────
+async function captureScreenshot() {
+    const result = await api("/api/debug/screenshot", "GET", null, 15000);
+    if (result.image) {
+        const img = document.getElementById("debug-img");
+        img.src = "data:image/png;base64," + result.image;
+        img.style.display = "block";
+        document.getElementById("debug-url").textContent = "URL: " + (result.url || "unknown");
+    } else {
+        alert(result.error || "Could not capture screenshot");
+    }
+}
+
 // ── Init ────────────────────────────────────────────────────
 async function init() {
     // Check account status
@@ -298,9 +311,10 @@ async function init() {
     }
     isAdmin = userStatus.is_admin;
 
-    // Show admin panel if admin
+    // Show admin panel and debug panel if admin
     if (isAdmin) {
         document.getElementById("admin-panel").classList.remove("hidden");
+        document.getElementById("debug-panel").classList.remove("hidden");
         loadUsers();
     }
 
