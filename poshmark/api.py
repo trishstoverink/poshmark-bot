@@ -1,23 +1,26 @@
 import math
 from database import log_activity
 
-BASE_URL = "https://poshmark.com"
+API_BASE = "https://api.poshmark.com/api"
+WEB_BASE = "https://poshmark.com"
 
 
 class PoshmarkAPI:
     def __init__(self, auth):
         self.auth = auth
 
-    def _get(self, path, params=None):
+    def _get(self, path, params=None, use_api=True):
+        base = API_BASE if use_api else WEB_BASE
         resp = self.auth.get_session().get(
-            f"{BASE_URL}{path}", params=params, timeout=30
+            f"{base}{path}", params=params, timeout=30
         )
         resp.raise_for_status()
         return resp.json()
 
-    def _post(self, path, json_data=None):
+    def _post(self, path, json_data=None, use_api=True):
+        base = API_BASE if use_api else WEB_BASE
         resp = self.auth.get_session().post(
-            f"{BASE_URL}{path}", json=json_data, timeout=30
+            f"{base}{path}", json=json_data, timeout=30
         )
         resp.raise_for_status()
         return resp.json()
