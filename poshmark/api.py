@@ -83,6 +83,20 @@ class PoshmarkAPI:
 
         return listings
 
+    def _check_logged_in(self, driver):
+        """Check if the browser is still logged into Poshmark."""
+        is_logged_in = driver.execute_script("""
+            // Check if "Log In" link exists in the header — means NOT logged in
+            var els = document.querySelectorAll('a');
+            for (var i = 0; i < els.length; i++) {
+                if (els[i].textContent.trim() === 'Log In' || els[i].textContent.trim() === 'Log in') {
+                    return false;
+                }
+            }
+            return true;
+        """)
+        return is_logged_in
+
     def share_listing(self, listing_id):
         """Share a listing by navigating to it and clicking share -> followers."""
         driver = self._get_driver()
@@ -90,11 +104,10 @@ class PoshmarkAPI:
             return {"success": False, "error": "Not logged in"}
 
         try:
-            # Navigate with retry — sometimes chromedriver loses the session
+            # Navigate with retry
             try:
                 driver.get(f"{POSH_URL}/listing/{listing_id}")
             except Exception:
-                # Browser may have crashed, get a fresh one
                 from poshmark.browser import close_browser
                 close_browser()
                 driver = self._get_driver()
@@ -102,6 +115,12 @@ class PoshmarkAPI:
                     return {"success": False, "error": "Browser crashed, reconnect Poshmark"}
                 driver.get(f"{POSH_URL}/listing/{listing_id}")
             time.sleep(3)
+
+            # Verify we're still logged in
+            if not self._check_logged_in(driver):
+                self.auth.logged_in = False
+                log_activity("share", "Session expired — please reconnect Poshmark", "error")
+                return {"success": False, "error": "Session expired. Please reconnect Poshmark."}
 
             # Step 1: Click the share button (exact selector from inspecting the page)
             # The button is: div.social-action-bar__share[data-et-name="share"]
