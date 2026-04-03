@@ -93,71 +93,55 @@ class PoshmarkAPI:
             driver.get(f"{POSH_URL}/listing/{listing_id}")
             time.sleep(3)
 
-            # Use JavaScript to find and click the share button
+            # Step 1: Click the share button (exact selector from inspecting the page)
+            # The button is: div.social-action-bar__share[data-et-name="share"]
             clicked = driver.execute_script("""
-                // Strategy 1: data-et-name share
-                var el = document.querySelector('[data-et-name="share"]');
-                if (el) { el.click(); return true; }
-
-                // Strategy 2: share class on icon or link
-                var els = document.querySelectorAll('a, button, i, span, div');
-                for (var i = 0; i < els.length; i++) {
-                    var cl = (els[i].className || '').toLowerCase();
-                    var aria = (els[i].getAttribute('aria-label') || '').toLowerCase();
-                    var dataTest = (els[i].getAttribute('data-testid') || '').toLowerCase();
-                    if (cl.includes('share') && !cl.includes('share-wrapper') || aria.includes('share') || dataTest.includes('share')) {
-                        els[i].click();
-                        return true;
-                    }
-                }
-
-                // Strategy 3: SVG share icon (repost/arrow icon)
-                var svgs = document.querySelectorAll('svg');
-                for (var i = 0; i < svgs.length; i++) {
-                    var parent = svgs[i].closest('a, button, div[role="button"]');
-                    if (parent) {
-                        var cl = (parent.className || '').toLowerCase();
-                        var aria = (parent.getAttribute('aria-label') || '').toLowerCase();
-                        if (cl.includes('share') || aria.includes('share')) {
-                            parent.click();
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
+                var el = document.querySelector('.social-action-bar__share, [data-et-name="share"]');
+                if (el) { el.click(); return 'found'; }
+                return 'not_found';
             """)
 
-            if not clicked:
-                return {"success": False, "error": "Share button not found"}
+            if clicked == 'not_found':
+                return {"success": False, "error": "Share button not found on page"}
 
             time.sleep(2)
 
-            # Now click "To My Followers" in the share popup
-            driver.execute_script("""
-                // Look for the Poshmark followers share option
-                var els = document.querySelectorAll('a, button, div, span, li');
+            # Step 2: Click "To My Followers" in the share popup
+            # The popup contains a share-wrapper-container or pm-followers-share-link
+            followers_result = driver.execute_script("""
+                // Try 1: share-wrapper-container class (Poshmark share to followers)
+                var el = document.querySelector('.share-wrapper-container');
+                if (el) { el.click(); return 'share-wrapper'; }
+
+                // Try 2: pm-followers-share-link
+                el = document.querySelector('.pm-followers-share-link');
+                if (el) { el.click(); return 'pm-followers-link'; }
+
+                // Try 3: Icon with pm-logo class (Poshmark logo in share modal)
+                el = document.querySelector('i.icon.pm-logo-white, i.icon.pm-logo');
+                if (el) { el.click(); return 'pm-logo'; }
+
+                // Try 4: Any element with "Followers" text in the visible popup/modal
+                var els = document.querySelectorAll('a, button, div, li');
                 for (var i = 0; i < els.length; i++) {
-                    var text = (els[i].textContent || '').toLowerCase();
-                    var cl = (els[i].className || '').toLowerCase();
-                    if (text.includes('follower') || cl.includes('pm-followers') || cl.includes('share-wrapper-container')) {
+                    var text = els[i].textContent.trim();
+                    if (text === 'Poshmark' || text === 'To My Followers' || text === 'My Followers' || text === 'Followers') {
                         els[i].click();
-                        return true;
+                        return 'text-match: ' + text;
                     }
                 }
-                // Fallback: look for Poshmark logo icon in share modal
-                var icons = document.querySelectorAll('i, img');
-                for (var i = 0; i < icons.length; i++) {
-                    var cl = (icons[i].className || '').toLowerCase();
-                    var src = (icons[i].src || '').toLowerCase();
-                    if (cl.includes('pm-logo') || cl.includes('posh') || src.includes('poshmark')) {
-                        icons[i].click();
-                        return true;
-                    }
+
+                // Try 5: Look at what's in the popup/modal that appeared
+                var modal = document.querySelector('[class*="modal"], [class*="popup"], [class*="share-popup"], [class*="dropdown"]');
+                if (modal) {
+                    var firstOption = modal.querySelector('a, button, div[role="button"], li');
+                    if (firstOption) { firstOption.click(); return 'first-modal-option'; }
                 }
-                return false;
+
+                return 'followers_not_found';
             """)
 
+            log_activity("share_debug", f"Followers click result: {followers_result}", "info")
             time.sleep(1)
             return {"success": True}
 
