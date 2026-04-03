@@ -106,37 +106,20 @@ class PoshmarkAPI:
 
             time.sleep(2)
 
-            # Step 2: Click "To My Followers" in the share popup
-            # The popup contains a share-wrapper-container or pm-followers-share-link
+            # Step 2: Click "To My Followers" in the share modal
+            # Exact structure: div.share-modal > ul.internal-shares > li > a[data-et-name="share_poshmark"]
             followers_result = driver.execute_script("""
-                // Try 1: share-wrapper-container class (Poshmark share to followers)
-                var el = document.querySelector('.share-wrapper-container');
-                if (el) { el.click(); return 'share-wrapper'; }
+                // Exact match: the <a> tag with data-et-name="share_poshmark"
+                var el = document.querySelector('a[data-et-name="share_poshmark"]');
+                if (el) { el.click(); return 'share_poshmark'; }
 
-                // Try 2: pm-followers-share-link
-                el = document.querySelector('.pm-followers-share-link');
-                if (el) { el.click(); return 'pm-followers-link'; }
+                // Fallback: internal-share__link class
+                el = document.querySelector('.internal-share__link');
+                if (el) { el.click(); return 'internal-share-link'; }
 
-                // Try 3: Icon with pm-logo class (Poshmark logo in share modal)
-                el = document.querySelector('i.icon.pm-logo-white, i.icon.pm-logo');
-                if (el) { el.click(); return 'pm-logo'; }
-
-                // Try 4: Any element with "Followers" text in the visible popup/modal
-                var els = document.querySelectorAll('a, button, div, li');
-                for (var i = 0; i < els.length; i++) {
-                    var text = els[i].textContent.trim();
-                    if (text === 'Poshmark' || text === 'To My Followers' || text === 'My Followers' || text === 'Followers') {
-                        els[i].click();
-                        return 'text-match: ' + text;
-                    }
-                }
-
-                // Try 5: Look at what's in the popup/modal that appeared
-                var modal = document.querySelector('[class*="modal"], [class*="popup"], [class*="share-popup"], [class*="dropdown"]');
-                if (modal) {
-                    var firstOption = modal.querySelector('a, button, div[role="button"], li');
-                    if (firstOption) { firstOption.click(); return 'first-modal-option'; }
-                }
+                // Fallback: first link inside the share modal
+                el = document.querySelector('.share-modal a');
+                if (el) { el.click(); return 'first-modal-link'; }
 
                 return 'followers_not_found';
             """)
