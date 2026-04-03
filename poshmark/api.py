@@ -36,32 +36,27 @@ class PoshmarkAPI:
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 time.sleep(1.5)
 
-            # Use JavaScript to extract listing data — much more reliable than CSS selectors
+            # Use JavaScript to extract listing data
             listings = driver.execute_script("""
                 var results = [];
-                // Find all links to listings
                 var links = document.querySelectorAll('a[href*="/listing/"]');
                 var seen = new Set();
                 for (var i = 0; i < links.length; i++) {
                     var href = links[i].href;
-                    // Extract listing ID from URL
                     var match = href.match(/\\/listing\\/([^/?]+)/);
                     if (!match) continue;
                     var id = match[1];
                     if (seen.has(id)) continue;
                     seen.add(id);
 
-                    // Find the parent card/tile element
                     var card = links[i].closest('[data-et-name], .card, .tile, [class*="card"]') || links[i].parentElement;
 
-                    // Get title
                     var title = 'Unknown';
                     var titleEl = card ? card.querySelector('a[href*="/listing/"] .title, [class*="title"], .fw--bold') : null;
                     if (!titleEl) titleEl = links[i];
                     title = (titleEl.textContent || titleEl.title || '').trim().substring(0, 80);
                     if (!title || title.length < 2) title = 'Listing ' + id.substring(0, 8);
 
-                    // Get price
                     var price = 0;
                     var priceEls = card ? card.querySelectorAll('span, div') : [];
                     for (var j = 0; j < priceEls.length; j++) {
@@ -73,7 +68,6 @@ class PoshmarkAPI:
                         }
                     }
 
-                    // Skip sold items
                     var cardText = card ? card.textContent.toUpperCase() : '';
                     if (cardText.includes('SOLD') || cardText.includes('NOT FOR SALE')) continue;
 
@@ -90,95 +84,81 @@ class PoshmarkAPI:
         return listings
 
     def share_listing(self, listing_id):
-        """Share a listing from the closet page by clicking its share button."""
+        """Share a listing by navigating to it and clicking share -> followers."""
         driver = self._get_driver()
         if not driver:
             return {"success": False, "error": "Not logged in"}
 
         try:
             driver.get(f"{POSH_URL}/listing/{listing_id}")
-            time.sleep(2)
+            time.sleep(3)
 
-            wait = WebDriverWait(driver, 10)
+            # Use JavaScript to find and click the share button
+            clicked = driver.execute_script("""
+                // Strategy 1: data-et-name share
+                var el = document.querySelector('[data-et-name="share"]');
+                if (el) { el.click(); return true; }
 
-            # Find share button — try multiple selectors
-            share_btn = None
-            for selector in [
-                "[data-et-name='share']",
-                "i.icon.share-gray-large",
-                ".share-wrapper-container",
-                "[aria-label*='hare']",
-                "a.share",
-                ".social-action-bar__share",
-                # Fallback: find by the share/repost icon
-                "i[class*='share']",
-            ]:
-                try:
-                    share_btn = driver.find_element(By.CSS_SELECTOR, selector)
-                    if share_btn and share_btn.is_displayed():
-                        break
-                    share_btn = None
-                except Exception:
-                    continue
-
-            # Last resort: find via JS
-            if not share_btn:
-                share_btn = driver.execute_script("""
-                    // Look for share icon by checking all clickable elements
-                    var els = document.querySelectorAll('a, button, i, div[role="button"]');
-                    for (var i = 0; i < els.length; i++) {
-                        var cl = (els[i].className || '').toLowerCase();
-                        var aria = (els[i].getAttribute('aria-label') || '').toLowerCase();
-                        if (cl.includes('share') || aria.includes('share')) return els[i];
+                // Strategy 2: share class on icon or link
+                var els = document.querySelectorAll('a, button, i, span, div');
+                for (var i = 0; i < els.length; i++) {
+                    var cl = (els[i].className || '').toLowerCase();
+                    var aria = (els[i].getAttribute('aria-label') || '').toLowerCase();
+                    var dataTest = (els[i].getAttribute('data-testid') || '').toLowerCase();
+                    if (cl.includes('share') && !cl.includes('share-wrapper') || aria.includes('share') || dataTest.includes('share')) {
+                        els[i].click();
+                        return true;
                     }
-                    return null;
-                """)
+                }
 
-            if not share_btn:
+                // Strategy 3: SVG share icon (repost/arrow icon)
+                var svgs = document.querySelectorAll('svg');
+                for (var i = 0; i < svgs.length; i++) {
+                    var parent = svgs[i].closest('a, button, div[role="button"]');
+                    if (parent) {
+                        var cl = (parent.className || '').toLowerCase();
+                        var aria = (parent.getAttribute('aria-label') || '').toLowerCase();
+                        if (cl.includes('share') || aria.includes('share')) {
+                            parent.click();
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            """)
+
+            if not clicked:
                 return {"success": False, "error": "Share button not found"}
 
-            share_btn.click()
             time.sleep(2)
 
-            # Click "To My Followers" in the share popup
-            followers_btn = None
-            for selector in [
-                ".share-wrapper-container",
-                "a.pm-followers-share-link",
-                "[data-et-name='followers']",
-            ]:
-                try:
-                    followers_btn = driver.find_element(By.CSS_SELECTOR, selector)
-                    if followers_btn and followers_btn.is_displayed():
-                        break
-                    followers_btn = None
-                except Exception:
-                    continue
-
-            if not followers_btn:
-                # Try finding by text
-                try:
-                    followers_btn = driver.find_element(
-                        By.XPATH, "//*[contains(text(), 'Followers') or contains(text(), 'followers')]"
-                    )
-                except Exception:
-                    pass
-
-            if not followers_btn:
-                # Try the Poshmark logo icon in the share modal
-                followers_btn = driver.execute_script("""
-                    var els = document.querySelectorAll('i, img, div, a');
-                    for (var i = 0; i < els.length; i++) {
-                        var cl = (els[i].className || '').toLowerCase();
-                        if (cl.includes('pm-logo') || cl.includes('poshmark')) return els[i];
+            # Now click "To My Followers" in the share popup
+            driver.execute_script("""
+                // Look for the Poshmark followers share option
+                var els = document.querySelectorAll('a, button, div, span, li');
+                for (var i = 0; i < els.length; i++) {
+                    var text = (els[i].textContent || '').toLowerCase();
+                    var cl = (els[i].className || '').toLowerCase();
+                    if (text.includes('follower') || cl.includes('pm-followers') || cl.includes('share-wrapper-container')) {
+                        els[i].click();
+                        return true;
                     }
-                    return null;
-                """)
+                }
+                // Fallback: look for Poshmark logo icon in share modal
+                var icons = document.querySelectorAll('i, img');
+                for (var i = 0; i < icons.length; i++) {
+                    var cl = (icons[i].className || '').toLowerCase();
+                    var src = (icons[i].src || '').toLowerCase();
+                    if (cl.includes('pm-logo') || cl.includes('posh') || src.includes('poshmark')) {
+                        icons[i].click();
+                        return true;
+                    }
+                }
+                return false;
+            """)
 
-            if followers_btn:
-                followers_btn.click()
-                time.sleep(1)
-
+            time.sleep(1)
             return {"success": True}
 
         except Exception as e:
@@ -192,39 +172,30 @@ class PoshmarkAPI:
 
         try:
             driver.get(f"{POSH_URL}/listing/{listing_id}")
-            time.sleep(2)
+            time.sleep(3)
 
-            # Find and click the likes count
-            likes_el = driver.execute_script("""
-                var els = document.querySelectorAll('a, span, div');
+            # Click the likes count
+            driver.execute_script("""
+                var els = document.querySelectorAll('a, span, div, button');
                 for (var i = 0; i < els.length; i++) {
-                    var text = els[i].textContent.trim();
                     var aria = (els[i].getAttribute('aria-label') || '').toLowerCase();
-                    if (aria.includes('like') && text.match(/^\\d+$/)) return els[i];
+                    var cl = (els[i].className || '').toLowerCase();
+                    if ((aria.includes('like') || cl.includes('like')) && els[i].textContent.trim().match(/^\\d+$/)) {
+                        els[i].click();
+                        return true;
+                    }
                 }
-                // Fallback: find heart icon with a count
-                var hearts = document.querySelectorAll('[class*="like"], [class*="heart"]');
-                for (var i = 0; i < hearts.length; i++) {
-                    var parent = hearts[i].parentElement;
-                    if (parent && parent.textContent.trim().match(/^\\d+$/)) return parent;
-                }
-                return null;
+                return false;
             """)
-
-            if not likes_el:
-                return []
-
-            likes_el.click()
             time.sleep(2)
 
-            # Scrape likers from the modal/page
+            # Scrape likers
             likers = driver.execute_script("""
                 var results = [];
                 var links = document.querySelectorAll('a[href*="/closet/"]');
                 var seen = new Set();
                 for (var i = 0; i < links.length; i++) {
-                    var href = links[i].href;
-                    var match = href.match(/\\/closet\\/([^/?]+)/);
+                    var match = links[i].href.match(/\\/closet\\/([^/?]+)/);
                     if (match && !seen.has(match[1])) {
                         seen.add(match[1]);
                         results.push({id: match[1], username: match[1]});
@@ -246,89 +217,72 @@ class PoshmarkAPI:
 
         try:
             driver.get(f"{POSH_URL}/listing/{listing_id}")
-            time.sleep(2)
+            time.sleep(3)
 
-            wait = WebDriverWait(driver, 10)
-
-            # Find and click the "Offer/Price Drop" button
-            offer_btn = driver.execute_script("""
+            # Click the offer/price drop button
+            found = driver.execute_script("""
                 var els = document.querySelectorAll('button, a, div[role="button"]');
                 for (var i = 0; i < els.length; i++) {
                     var text = els[i].textContent.toLowerCase();
-                    if (text.includes('offer') && text.includes('liker')) return els[i];
-                    if (text.includes('price drop')) return els[i];
+                    if (text.includes('offer') && text.includes('liker')) { els[i].click(); return true; }
+                    if (text.includes('price drop')) { els[i].click(); return true; }
                 }
-                return null;
+                return false;
             """)
 
-            if not offer_btn:
-                return {"success": False, "error": "Offer button not found on listing"}
+            if not found:
+                return {"success": False, "error": "Offer button not found"}
 
-            offer_btn.click()
             time.sleep(2)
 
-            # Fill in offer price
-            price_input = None
-            for selector in [
-                "input[name*='price']",
-                "input[placeholder*='price']",
-                "input[placeholder*='Price']",
-                "input[type='number']",
-                "input[type='tel']",
-            ]:
-                try:
-                    el = driver.find_element(By.CSS_SELECTOR, selector)
-                    if el.is_displayed():
-                        price_input = el
-                        break
-                except Exception:
-                    continue
+            # Fill price via JS
+            driver.execute_script("""
+                var inputs = document.querySelectorAll('input');
+                for (var i = 0; i < inputs.length; i++) {
+                    var name = (inputs[i].name || '').toLowerCase();
+                    var ph = (inputs[i].placeholder || '').toLowerCase();
+                    if (name.includes('price') || ph.includes('price') || inputs[i].type === 'number') {
+                        var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                        nativeInputValueSetter.call(inputs[i], arguments[0]);
+                        inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
+                        inputs[i].dispatchEvent(new Event('change', {bubbles: true}));
+                        break;
+                    }
+                }
+            """, str(int(price)))
 
-            if not price_input:
-                return {"success": False, "error": "Price input not found"}
-
-            price_input.click()
-            price_input.clear()
-            time.sleep(0.3)
-            price_input.send_keys(str(int(price)))
             time.sleep(0.5)
 
             # Handle shipping discount
             if shipping_discount:
-                try:
-                    ship_el = driver.execute_script("""
-                        var labels = document.querySelectorAll('label, div, span');
-                        for (var i = 0; i < labels.length; i++) {
-                            var text = labels[i].textContent.toLowerCase();
-                            if (text.includes('shipping') && text.includes('discount')) {
-                                var input = labels[i].querySelector('input') || labels[i].previousElementSibling;
-                                if (input && input.type === 'checkbox' && !input.checked) return labels[i];
-                            }
+                driver.execute_script("""
+                    var labels = document.querySelectorAll('label, div, span');
+                    for (var i = 0; i < labels.length; i++) {
+                        var text = labels[i].textContent.toLowerCase();
+                        if (text.includes('shipping') && text.includes('discount')) {
+                            var input = labels[i].querySelector('input[type="checkbox"]');
+                            if (input && !input.checked) labels[i].click();
+                            break;
                         }
-                        return null;
-                    """)
-                    if ship_el:
-                        ship_el.click()
-                except Exception:
-                    pass
+                    }
+                """)
 
-            # Click submit
+            # Submit
             time.sleep(0.5)
-            submit_btn = driver.execute_script("""
+            driver.execute_script("""
                 var btns = document.querySelectorAll('button');
                 for (var i = 0; i < btns.length; i++) {
                     var text = btns[i].textContent.toLowerCase();
-                    if (text.includes('submit') || text.includes('apply') || text.includes('send')) return btns[i];
+                    if (text.includes('submit') || text.includes('apply') || text.includes('send')) {
+                        btns[i].click();
+                        return true;
+                    }
                 }
-                return null;
+                return false;
             """)
 
-            if submit_btn:
-                submit_btn.click()
-                time.sleep(2)
-                return {"success": True}
-
-            return {"success": False, "error": "Submit button not found"}
+            time.sleep(2)
+            return {"success": True}
 
         except Exception as e:
             return {"success": False, "error": str(e)}
