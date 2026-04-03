@@ -90,7 +90,17 @@ class PoshmarkAPI:
             return {"success": False, "error": "Not logged in"}
 
         try:
-            driver.get(f"{POSH_URL}/listing/{listing_id}")
+            # Navigate with retry — sometimes chromedriver loses the session
+            try:
+                driver.get(f"{POSH_URL}/listing/{listing_id}")
+            except Exception:
+                # Browser may have crashed, get a fresh one
+                from poshmark.browser import close_browser
+                close_browser()
+                driver = self._get_driver()
+                if not driver:
+                    return {"success": False, "error": "Browser crashed, reconnect Poshmark"}
+                driver.get(f"{POSH_URL}/listing/{listing_id}")
             time.sleep(3)
 
             # Step 1: Click the share button (exact selector from inspecting the page)
